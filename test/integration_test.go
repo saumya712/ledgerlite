@@ -1,4 +1,3 @@
-
 // Integration tests: real Postgres, real repository, real service.
 // They prove the properties the fakes cannot: locking, deadlock avoidance,
 // idempotency under concurrency, and rollback.
@@ -455,4 +454,3 @@ func TestLedgerRowsAreImmutable(t *testing.T) {
 	}
 	assertInvariants(t)
 }
-
