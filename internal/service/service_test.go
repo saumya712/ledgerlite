@@ -190,3 +190,22 @@ func TestDeposit(t *testing.T) {
 	assertBalance(t, db, fakeExternalID, -5000) // money entered the system from 'external'
 	assertConserved(t, db, before)
 }
+func TestTransfer_RejectsExternalAccount(t *testing.T) {
+	svc, db := setup(t)
+	before := db.totalBalance()
+
+	from := cmd("k1", 1000)
+	from.From = fakeExternalID
+	if _, err := svc.Transfer(context.Background(), from); !errors.Is(err, model.ErrExternalAccount) {
+		t.Fatalf("from external: err = %v, want ErrExternalAccount", err)
+	}
+
+	to := cmd("k2", 1000)
+	to.To = fakeExternalID
+	if _, err := svc.Transfer(context.Background(), to); !errors.Is(err, model.ErrExternalAccount) {
+		t.Fatalf("to external: err = %v, want ErrExternalAccount", err)
+	}
+
+	assertBalance(t, db, "alice", 10000)
+	assertConserved(t, db, before)
+}

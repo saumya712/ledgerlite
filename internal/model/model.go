@@ -16,6 +16,8 @@ var (
 	ErrInsufficientFunds     = errors.New("insufficient funds")
 	ErrMissingIdempotencyKey = errors.New("idempotency key is required")
 	ErrIdempotencyMismatch   = errors.New("idempotency key reused with a different request")
+	ErrInvalidName           = errors.New("name must be 1 to 100 characters")
+	ErrExternalAccount       = errors.New("operation not allowed on the external account")
 )
 
 type AccountKind string

@@ -87,7 +87,7 @@ type storedResponse struct {
 //
 // If the function inside WithinTx returns any error, the whole transaction
 // rolls back and nothing is saved.
-func (s *Service) Transfer(ctx context.Context, cmd TransferCommand) (TransferResult, error) {
+func (s *Service) transfer(ctx context.Context, cmd TransferCommand) (TransferResult, error) {
 	if cmd.IdempotencyKey == "" {
 		return TransferResult{}, model.ErrMissingIdempotencyKey
 	}
@@ -186,5 +186,15 @@ func hashRequest(cmd TransferCommand) string {
 // special 'external' account, so we reuse Transfer and the books still balance.
 func (s *Service) Deposit(ctx context.Context, cmd TransferCommand) (TransferResult, error) {
 	cmd.From = s.externalID
-	return s.Transfer(ctx, cmd)
+	return s.transfer(ctx, cmd)
+}
+
+// Transfer is the public entry point. It refuses the special 'external'
+// account, otherwise a client could mint money by transferring out of it.
+// Only Deposit is allowed to use that account.
+func (s *Service) Transfer(ctx context.Context, cmd TransferCommand) (TransferResult, error) {
+	if cmd.From == s.externalID || cmd.To == s.externalID {
+		return TransferResult{}, model.ErrExternalAccount
+	}
+	return s.transfer(ctx, cmd)
 }
