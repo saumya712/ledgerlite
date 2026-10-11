@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 5s       # short, so dashboards react quickly while you experiment
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: ledgerlite
+    static_configs:
+      - targets: ["app:8080"]   # the compose service name; /metrics is the default path

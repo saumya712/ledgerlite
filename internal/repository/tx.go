@@ -53,10 +53,10 @@ func (m *TxManager) WithinTx(ctx context.Context, fn func(ctx context.Context, t
 // txRepos implements service.Tx: it hands out repositories bound to one transaction.
 type txRepos struct{ db dbtx }
 
-func (t *txRepos) Accounts() service.AccountRepo       { return &accountRepo{db: t.db} }
-func (t *txRepos) Transfers() service.TransferRepo     { return &transferRepo{db: t.db} }
+func (t *txRepos) Accounts() service.AccountRepo        { return &accountRepo{db: t.db} }
+func (t *txRepos) Transfers() service.TransferRepo      { return &transferRepo{db: t.db} }
 func (t *txRepos) Idempotency() service.IdempotencyRepo { return &idempotencyRepo{db: t.db} }
-func (t *txRepos) Outbox() service.OutboxRepo          { return &outboxRepo{db: t.db} }
+func (t *txRepos) Outbox() service.OutboxRepo           { return &outboxRepo{db: t.db} }
 
 // Compile-time checks: if a repository drifts from its port, the build fails.
 var (

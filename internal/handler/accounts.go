@@ -1,11 +1,11 @@
 package handler
- 
+
 import "net/http"
- 
+
 func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
- 
+
 // POST /v1/accounts   {"name": "alice"}
 func (h *Handler) createAccount(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -21,7 +21,7 @@ func (h *Handler) createAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusCreated, toAccountResponse(acct))
 }
- 
+
 // GET /v1/accounts/{id}
 func (h *Handler) getAccount(w http.ResponseWriter, r *http.Request) {
 	id, ok := normalizeID(r.PathValue("id"))

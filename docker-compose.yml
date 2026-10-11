@@ -1,3 +1,8 @@
+# Default:   docker compose up -d                      -> only Postgres (develop with `go run`)
+# Full stack: docker compose --profile stack up -d --build
+#                                                      -> + app, Prometheus, Grafana
+# Stop:      docker compose --profile stack down       (add -v to also wipe all data)
+
 services:
   postgres:
     image: postgres:18
@@ -7,9 +12,12 @@ services:
       POSTGRES_PASSWORD: ledger
       POSTGRES_DB: ledgerlite
     ports:
-      - "5432:5432"
+      - "5432:5432"        # change the left number (e.g. 5433) if 5432 is already in use
     volumes:
+      # Postgres 18 images keep data under /var/lib/postgresql/<version>/,
+      # so the volume is mounted one level up.
       - pgdata:/var/lib/postgresql
+      # Every .sql file in this folder runs ONCE, when the database is first created.
       - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ledger -d ledgerlite"]
@@ -17,5 +25,55 @@ services:
       timeout: 3s
       retries: 10
 
+  app:
+    build: .
+    container_name: ledgerlite-app
+    profiles: ["stack"]
+    environment:
+      # Inside the compose network the database host is the service name.
+      DATABASE_URL: postgres://ledger:ledger@postgres:5432/ledgerlite
+      LOG_FORMAT: json
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:latest   # pin an exact version in a real deployment
+    container_name: ledgerlite-prometheus
+    profiles: ["stack"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+
+  grafana:
+    image: grafana/grafana:latest   # pin an exact version in a real deployment
+    container_name: ledgerlite-grafana
+    profiles: ["stack"]
+    environment:
+      # Local learning setup only: anonymous read access, default admin login.
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   pgdata:
+  promdata:
+  grafanadata:

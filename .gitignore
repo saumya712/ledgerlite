@@ -1,0 +1,16 @@
+# binaries and build output
+/ledgerlite
+/server
+*.exe
+*.test
+*.out
+
+# editor and OS
+.vscode/
+.idea/
+.DS_Store
+
+# local files
+*.tar.gz
+.env
+.env.*

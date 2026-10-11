@@ -304,3 +304,85 @@ func TestHealth(t *testing.T) {
 		t.Errorf("status = %d, want 200", rec.Code)
 	}
 }
+
+// ---- metrics recording ----
+
+type fakeRecorder struct {
+	outcomes []string // "kind/outcome"
+	routes   []string
+	statuses []int
+	inFlight int
+}
+
+func (f *fakeRecorder) ObserveRequest(route string, status int, _ time.Duration) {
+	f.routes = append(f.routes, route)
+	f.statuses = append(f.statuses, status)
+}
+func (f *fakeRecorder) InFlight(delta int) { f.inFlight += delta }
+func (f *fakeRecorder) TransferOutcome(kind, outcome string) {
+	f.outcomes = append(f.outcomes, kind+"/"+outcome)
+}
+
+func recordingHandler(tr Transfers, ac Accounts, rec Recorder) http.Handler {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return New(tr, ac, log).WithRecorder(rec).Routes()
+}
+
+func TestRecorder_TransferOutcomes(t *testing.T) {
+	cases := []struct {
+		name    string
+		res     service.TransferResult
+		err     error
+		outcome string
+		status  int
+	}{
+		{"created", service.TransferResult{TransferID: "t"}, nil, "created", 201},
+		{"replayed", service.TransferResult{TransferID: "t", Replayed: true}, nil, "replayed", 200},
+		{"insufficient", service.TransferResult{}, model.ErrInsufficientFunds, "insufficient_funds", 422},
+		{"unknown error", service.TransferResult{}, errors.New("boom"), "internal_error", 500},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &fakeRecorder{}
+			h := recordingHandler(&fakeTransfers{res: tc.res, err: tc.err}, &fakeAccounts{}, rec)
+
+			do(h, "POST", "/v1/transfers", transferBody(aliceID, bobID, 100), withKey)
+
+			if len(rec.outcomes) != 1 || rec.outcomes[0] != "transfer/"+tc.outcome {
+				t.Errorf("outcomes = %v, want [transfer/%s]", rec.outcomes, tc.outcome)
+			}
+			if len(rec.statuses) != 1 || rec.statuses[0] != tc.status {
+				t.Errorf("statuses = %v, want [%d]", rec.statuses, tc.status)
+			}
+			if rec.inFlight != 0 {
+				t.Errorf("in-flight gauge = %d after the request, want 0", rec.inFlight)
+			}
+		})
+	}
+}
+
+func TestRecorder_DepositsAreLabelledAsDeposits(t *testing.T) {
+	rec := &fakeRecorder{}
+	h := recordingHandler(&fakeTransfers{res: service.TransferResult{TransferID: "t"}}, &fakeAccounts{}, rec)
+
+	do(h, "POST", "/v1/deposits", fmt.Sprintf(`{"to":%q,"amount":100}`, aliceID), withKey)
+
+	if len(rec.outcomes) != 1 || rec.outcomes[0] != "deposit/created" {
+		t.Errorf("outcomes = %v, want [deposit/created]", rec.outcomes)
+	}
+}
+
+// Account ids in the URL must never become metric labels: that would create a
+// new time series per account and eventually exhaust Prometheus.
+func TestRecorder_RouteLabelIsThePatternNotTheURL(t *testing.T) {
+	rec := &fakeRecorder{}
+	h := recordingHandler(&fakeTransfers{}, &fakeAccounts{acct: model.Account{ID: aliceID}}, rec)
+
+	do(h, "GET", "/v1/accounts/"+aliceID, "", nil)
+	do(h, "GET", "/v1/accounts/"+bobID, "", nil)
+
+	want := "GET /v1/accounts/{id}"
+	if len(rec.routes) != 2 || rec.routes[0] != want || rec.routes[1] != want {
+		t.Errorf("routes = %v, want two of %q", rec.routes, want)
+	}
+}

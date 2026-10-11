@@ -1,22 +1,22 @@
 package handler
- 
+
 import (
 	"net/http"
- 
+
 	"github.com/saumya712/ledgerlite/internal/service"
 )
- 
+
 type transferRequest struct {
 	From   string `json:"from"`
 	To     string `json:"to"`
 	Amount int64  `json:"amount"` // in paise
 }
- 
+
 type depositRequest struct {
 	To     string `json:"to"`
 	Amount int64  `json:"amount"` // in paise
 }
- 
+
 // POST /v1/transfers   (header: Idempotency-Key)
 func (h *Handler) createTransfer(w http.ResponseWriter, r *http.Request) {
 	var req transferRequest
@@ -37,13 +37,13 @@ func (h *Handler) createTransfer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
- 
+
 	res, err := h.transfers.Transfer(r.Context(), service.TransferCommand{
 		ClientID: clientID, IdempotencyKey: key, From: from, To: to, Amount: req.Amount,
 	})
-	h.respondTransfer(w, r, res, err)
+	h.respondTransfer(w, r, "transfer", res, err)
 }
- 
+
 // POST /v1/deposits   (header: Idempotency-Key)
 func (h *Handler) createDeposit(w http.ResponseWriter, r *http.Request) {
 	var req depositRequest
@@ -59,24 +59,27 @@ func (h *Handler) createDeposit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
- 
+
 	res, err := h.transfers.Deposit(r.Context(), service.TransferCommand{
 		ClientID: clientID, IdempotencyKey: key, To: to, Amount: req.Amount,
 	})
-	h.respondTransfer(w, r, res, err)
+	h.respondTransfer(w, r, "deposit", res, err)
 }
- 
+
 // respondTransfer: 201 for a newly executed request, 200 for a replay of an
 // earlier identical request (marked with an Idempotent-Replayed header).
-func (h *Handler) respondTransfer(w http.ResponseWriter, r *http.Request, res service.TransferResult, err error) {
+// kind is "transfer" or "deposit" and only feeds the metrics.
+func (h *Handler) respondTransfer(w http.ResponseWriter, r *http.Request, kind string, res service.TransferResult, err error) {
 	if err != nil {
+		h.rec.TransferOutcome(kind, outcomeOf(err))
 		h.writeServiceError(w, r, err)
 		return
 	}
-	status := http.StatusCreated
+	status, outcome := http.StatusCreated, "created"
 	if res.Replayed {
-		status = http.StatusOK
+		status, outcome = http.StatusOK, "replayed"
 		w.Header().Set("Idempotent-Replayed", "true")
 	}
+	h.rec.TransferOutcome(kind, outcome)
 	writeJSON(w, status, transferResponse{TransferID: res.TransferID, Replayed: res.Replayed})
 }
